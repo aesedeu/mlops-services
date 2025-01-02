@@ -1,0 +1,81 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    ports:
+      - 3306:3306
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+    networks:
+      - internal
+  
+  zenml:
+    image: zenmldocker/zenml-server
+    platform: linux/amd64
+    ports:
+      - "8080:8080"
+    environment:
+      - ZENML_STORE_URL=mysql://root:password@host.docker.internal/zenml
+    links:
+      - mysql
+    depends_on:
+      - mysql
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: on-failure
+    networks:
+      - internal
+  
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - 'minio_data:/data'
+    env_file: "./.env"
+    networks:
+      - internal
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: always
+
+  mc:
+    image: quay.io/minio/mc
+    container_name: minio_mc
+    volumes:
+      - minio_data:/data
+    env_file: "./.env"
+    networks:
+      - internal
+    entrypoint: >
+      /bin/sh -c "
+      sleep 1;
+      mc alias set local http://minio:9000 admin 23wesdxc &&
+      mc mb --ignore-existing local/zenml &&
+      mc quota set local/zenml --size 12GiB &&
+      exit 1
+      "
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  minio_data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ./minio_data
+
+networks:
+  internal:
+    driver: bridge
