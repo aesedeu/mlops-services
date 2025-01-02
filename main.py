@@ -10,10 +10,10 @@ import pendulum
 from zenml import pipeline, step, ArtifactConfig
 import logging
 
-S3_FOLDER_NAME = "SVC" # ОБЯЗАТЕЛЬНО ЗАПОЛНИТЬ
+PROJECT_NAME = "SVC" # ОБЯЗАТЕЛЬНО ЗАПОЛНИТЬ
 S3_SUBFOLDER_NAME = pendulum.today().to_date_string()
 
-@step(name=f"{S3_FOLDER_NAME}/{S3_SUBFOLDER_NAME}/training_data_loader")
+@step(name=f"{PROJECT_NAME}/{S3_SUBFOLDER_NAME}/training_data_loader")
 def training_data_loader() -> Tuple[
     # Notice we use a Tuple and Annotated to return 
     # multiple named outputs
@@ -31,7 +31,7 @@ def training_data_loader() -> Tuple[
     )
     return X_train, X_test, y_train, y_test
 
-@step(name=f"{S3_FOLDER_NAME}/{S3_SUBFOLDER_NAME}/svc_trainer")
+@step(name=f"{PROJECT_NAME}/{S3_SUBFOLDER_NAME}/svc_trainer")
 def svc_trainer(
     X_train: pd.DataFrame,
     y_train: pd.Series,
@@ -50,7 +50,7 @@ def svc_trainer(
 
     return model, train_acc
 
-@pipeline(name=f"{S3_FOLDER_NAME}/{S3_SUBFOLDER_NAME}/pipeline")
+@pipeline(name=f"{PROJECT_NAME}")
 def training_pipeline(gamma: float = 0.002):
     X_train, X_test, y_train, y_test = training_data_loader()
     svc_trainer(gamma=gamma, X_train=X_train, y_train=y_train)
