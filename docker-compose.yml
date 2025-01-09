@@ -47,26 +47,63 @@ services:
       start_period: 60s
     restart: always
 
-  mc:
-    image: quay.io/minio/mc
-    container_name: minio_mc
-    volumes:
-      - minio_data:/data
-    env_file: "./.env"
-    networks:
-      - internal
-    entrypoint: >
-      /bin/sh -c "
-      sleep 1;
-      mc alias set local http://minio:9000 admin 23wesdxc &&
-      mc mb --ignore-existing local/zenml &&
-      mc quota set local/zenml --size 12GiB &&
-      exit 1
-      "
+  
+  # mc:
+  #   image: quay.io/minio/mc
+  #   container_name: minio_mc
+  #   # volumes:
+  #   #   - minio_data:/data
+  #   env_file: "./.env"
+  #   networks:
+  #     - internal
+  #   entrypoint: >
+  #     bash -c "
+  #     mc alias set minio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+  #     if ! mc ls minio | grep --quiet ${DEFAULT_BUCKET_NAME}; then
+  #       mc mb minio/${DEFAULT_BUCKET_NAME}
+  #     else
+  #       echo '${DEFAULT_BUCKET_NAME} already exists'
+  #     fi
+  #     "
+  #   depends_on:
+  #     minio:
+  #       condition: service_healthy
+  #   restart: on-failure
+
+  postgres:
+    image: postgres:latest
+    env_file:
+      - ./.env
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${PG_USER}
+      - POSTGRES_PASSWORD=${PG_PASSWORD}
+      - POSTGRES_DB=postgres
+  
+  mlflow:
+    build:
+      context: ./docker/mlflow_build
+      dockerfile: Dockerfile
+    image: mlflow_server:1.0
     depends_on:
-      minio:
-        condition: service_healthy
-    restart: on-failure
+      - postgres
+    ports:
+      - "5050:5000"
+    env_file:
+      - ./.env
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      # MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_AUTH_CONFIG_PATH: /basic_auth.ini
+      DEFAULT_BUCKET_NAME: ${DEFAULT_BUCKET_NAME}
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+    entrypoint: bash -c "mlflow server --backend-store-uri postgresql://${PG_USER}:${PG_PASSWORD}@postgres:5432/postgres --default-artifact-root s3://${DEFAULT_BUCKET_NAME}/mlflow --host 0.0.0.0 --port 5000"
+    # volumes:
+    #   - ./docker/mlflow_build/basic_auth.ini:/basic_auth.ini
 
 volumes:
   minio_data:
