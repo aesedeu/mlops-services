@@ -51,14 +51,11 @@ build:
 	$(MAKE) docker_up
 	echo "Waiting for containers startup (30 seconds)"
 	sleep 30
+	zenml login http://localhost:8080 --refresh
 	zenml login
-	zenml login http://localhost:8080
 	$(MAKE) zenml-install-integrations
 	$(MAKE) zenml-create-artifact-store-minio
 	$(MAKE) zenml-create-exp-tracker
 	$(MAKE) zenml-register-stack
 	zenml stack set ml-stack
 	echo 'Project started'
-
-# zenml login
-# zenml login http://localhost:8080

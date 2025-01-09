@@ -7,8 +7,7 @@ from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.base import ClassifierMixin
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, log_loss, roc_auc_score, precision_score, recall_score
-
+from sklearn.metrics import accuracy_score
 import pendulum
 from dotenv import load_dotenv
 import warnings
@@ -16,13 +15,16 @@ import warnings
 from zenml import pipeline, step, ArtifactConfig
 from zenml.client import Client
 from zenml.integrations.mlflow.flavors.mlflow_experiment_tracker_flavor import MLFlowExperimentTrackerSettings
+
 import mlflow
+from mlflow.models import infer_signature
+
 import logging
 
 warnings.filterwarnings('ignore')
 load_dotenv()
 
-PROJECT_NAME = "SVC_custom_metrics" # ОБЯЗАТЕЛЬНО ЗАПОЛНИТЬ
+PROJECT_NAME = "SVC_example" # ОБЯЗАТЕЛЬНО ЗАПОЛНИТЬ
 S3_SUBFOLDER_NAME = pendulum.today().to_date_string()
 
 experiment_tracker = Client().active_stack.experiment_tracker
@@ -84,10 +86,32 @@ def svc_trainer(
     model = SVC(**svc_params)
     model.fit(X_train.to_numpy(), y_train.to_numpy())
 
-    mlflow.log_metric("accuracy", accuracy_score(y_train, model.predict(X_train.to_numpy())))
-    mlflow.log_metric("logloss", log_loss(y_train, model.predict(X_train.to_numpy())))
+    train_acc = accuracy_score(y_train.to_numpy(), model.predict(X_train.to_numpy()))
 
-    return model, accuracy_score(y_train, model.predict(X_train.to_numpy()))
+    # Логируем метрики модели
+    mlflow.log_params(svc_params)
+    mlflow.log_metric("accuracy", train_acc)
+
+    mlflow.sklearn.log_model(
+        sk_model=model,
+        artifact_path="mlflow/model",
+        signature=infer_signature(X_train, model.predict(X_train.to_numpy())),
+        input_example=X_train,
+        registered_model_name="SVC_registered_model_name"
+    )
+
+    # Фиксируем что модель принимает на вход и выдает на выходе
+    mlflow.log_input(
+        mlflow.data.from_pandas(X_train, source="ORACLE_DB"),
+        context='training'
+    )
+
+    mlflow.log_table(
+        X_train,
+        "log_table/table.json"
+    )
+
+    return model, train_acc
 
 @pipeline(
     enable_cache=False,
@@ -109,6 +133,8 @@ if __name__ == "__main__":
         "degree": 3
     }
 
-    for i in [0.002, 0.004, 0.006]:
-        svc_params["gamma"] = i
-        training_pipeline(svc_params=svc_params)
+    training_pipeline(svc_params=svc_params)
+
+    # for i in [0.002, 0.004, 0.006]:
+    #     svc_params["gamma"] = i
+        # training_pipeline(svc_params=svc_params)
